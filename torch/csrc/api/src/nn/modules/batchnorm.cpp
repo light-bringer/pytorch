@@ -1,38 +1,33 @@
 #include <torch/nn/modules/batchnorm.h>
 
+#include <cstdint>
+
 namespace torch { namespace nn {
-void BatchNorm::initialize_parameters() {
+
+BatchNorm::BatchNorm(int64_t features) : features_(features) {}
+
+void BatchNorm::reset() {
   if (affine_) {
-    weight = this->add(
-        Var(DefaultTensor(at::kFloat).tensor(num_features_), true), "weight");
-    bias = this->add(
-        Var(DefaultTensor(at::kFloat).tensor(num_features_), true), "bias");
+    weight_ =
+        add(Var(at::CPU(at::kFloat).empty({features_}).uniform_()), "weight");
+    bias_ = add(Var(at::CPU(at::kFloat).zeros({features_})), "bias");
   }
 
   if (stateful_) {
-    running_mean = Var(DefaultTensor(at::kFloat).zeros({num_features_}), false);
-    running_var = Var(DefaultTensor(at::kFloat).ones({num_features_}), false);
-  }
-}
-
-void BatchNorm::reset_parameters() {
-  if (affine_) {
-    weight.data().uniform_();
-    bias.data().zero_();
-  }
-
-  if (stateful_) {
-    running_mean.data().zero_();
-    running_var.data().fill_(1);
+    // TODO: Make into buffers instead of parameters
+    running_mean_ = add(
+        Var(at::CPU(at::kFloat).zeros({features_}), false), "running_mean");
+    running_variance_ = add(
+        Var(at::CPU(at::kFloat).ones({features_}), false), "running_variance");
   }
 }
 
 variable_list BatchNorm::forward(variable_list inputs) {
   auto& input = inputs[0];
-  auto& running_mean = (stateful_ ? this->running_mean : inputs[1]);
-  auto& running_var = (stateful_ ? this->running_var : inputs[2]);
+  auto& running_mean_ = (stateful_ ? this->running_mean_ : inputs[1]);
+  auto& running_variance_ = (stateful_ ? this->running_variance_ : inputs[2]);
 
-  if (train_) {
+  if (is_training()) {
     const auto num_channels = input.dim() > 1 ? input.size(1) : 1;
     if (input.numel() / num_channels <= 1) {
       throw std::runtime_error(
@@ -42,11 +37,11 @@ variable_list BatchNorm::forward(variable_list inputs) {
 
   auto output = at::batch_norm(
       input,
-      weight,
-      bias,
-      running_mean,
-      running_var,
-      train_,
+      weight_,
+      bias_,
+      running_mean_,
+      running_variance_,
+      is_training(),
       momentum_,
       eps_,
       hasCudnn());

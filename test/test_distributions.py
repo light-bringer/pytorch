@@ -1126,6 +1126,10 @@ class TestDistributions(TestCase):
         self.assertEqual(uniform.log_prob(above_high).item(), -float('inf'), allow_inf=True)
         self.assertEqual(uniform.log_prob(below_low).item(), -float('inf'), allow_inf=True)
 
+        # check cdf computation when value outside range
+        self.assertEqual(uniform.cdf(below_low).item(), 0)
+        self.assertEqual(uniform.cdf(above_high).item(), 1)
+
         set_rng_seed(1)
         self._gradcheck_log_prob(Uniform, (low, high))
         self._gradcheck_log_prob(Uniform, (low, 1.0))
@@ -1873,7 +1877,9 @@ class TestDistributions(TestCase):
         for Dist, params in EXAMPLES:
             for i, param in enumerate(params):
                 dist = Dist(**param)
-                samples = torch.tensor(dist.sample().data, requires_grad=True)
+                samples = torch.tensor(dist.sample().data)
+                if samples.dtype.is_floating_point:
+                    samples.requires_grad_()
                 try:
                     cdfs = dist.cdf(samples)
                     pdfs = dist.log_prob(samples).exp()

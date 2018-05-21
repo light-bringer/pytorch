@@ -9,29 +9,34 @@ bool test_optimizer_xor(Optimizer optim, std::shared_ptr<ContainerList> model) {
   float running_loss = 1;
   int epoch = 0;
   while (running_loss > 0.1) {
-    auto bs = 4U;
+    int64_t bs = 4;
     auto inp = at::CPU(at::kFloat).tensor({bs, 2});
     auto lab = at::CPU(at::kFloat).tensor({bs});
-    for (auto i = 0U; i < bs; i++) {
-      auto a = std::rand() % 2;
-      auto b = std::rand() % 2;
-      auto c = a ^ b;
+    for (size_t i = 0; i < bs; i++) {
+      const int64_t a = std::rand() % 2;
+      const int64_t b = std::rand() % 2;
+      const int64_t c = static_cast<uint64_t>(a) ^ static_cast<uint64_t>(b);
       inp[i][0] = a;
       inp[i][1] = b;
       lab[i] = c;
     }
     // forward
-    auto x = Var(inp);
-    auto y = Var(lab, false);
-    for (auto layer : *model)
-      x = layer->forward({x})[0].sigmoid_();
-    Variable loss = at::binary_cross_entropy(x, y);
+    auto input = Var(inp);
+    auto target = Var(lab, false);
 
-    optim->zero_grad();
-    backward(loss);
-    optim->step();
+    std::function<at::Scalar()> closure = [&]() -> at::Scalar {
+      optim->zero_grad();
+      auto x = input;
+      for (auto& layer : *model)
+        x = layer->forward({x})[0].sigmoid_();
+      Variable loss = at::binary_cross_entropy(x, target);
+      backward(loss);
+      return at::Scalar(loss.data());
+    };
 
-    running_loss = running_loss * 0.99 + loss.data().sum().toCFloat() * 0.01;
+    at::Scalar loss = optim->step(closure);
+
+    running_loss = running_loss * 0.99 + loss.toFloat() * 0.01;
     if (epoch > 3000) {
       return false;
     }
@@ -41,10 +46,16 @@ bool test_optimizer_xor(Optimizer optim, std::shared_ptr<ContainerList> model) {
 }
 
 TEST_CASE("optim") {
-  ContainerList list;
-  list.append(make(Linear(2, 8)));
-  list.append(make(Linear(8, 1)));
-  auto model = make(list);
+  std::srand(0);
+  setSeed(0);
+  auto model = std::make_shared<ContainerList>();
+  model->append(Linear(2, 8).build());
+  model->append(Linear(8, 1).build());
+
+  SECTION("lbfgs") {
+    auto optim = LBFGS(model, 5e-2).max_iter(5).make();
+    REQUIRE(test_optimizer_xor(optim, model));
+  }
 
   SECTION("sgd") {
     auto optim =
@@ -68,10 +79,10 @@ TEST_CASE("optim") {
   }
 
   /*
-  // This test appears to be flaky, see https://github.com/pytorch/pytorch/issues/7288
-  SECTION("adam") {
-    auto optim = Adam(model, 1.0).weight_decay(1e-6).make();
-    REQUIRE(test_optimizer_xor(optim, model));
+  // This test appears to be flaky, see
+  https://github.com/pytorch/pytorch/issues/7288 SECTION("adam") { auto optim =
+  Adam(model, 1.0).weight_decay(1e-6).make(); REQUIRE(test_optimizer_xor(optim,
+  model));
   }
   */
 

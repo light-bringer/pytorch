@@ -8,26 +8,39 @@
 
 namespace torch { namespace nn {
 
-class Dropout : public torch::nn::CloneableModule<Dropout> {
+namespace detail {
+template <typename T>
+class DropoutBase : public torch::nn::CloneableModule<T> {
  public:
-  Dropout(double p = 0.5) : p_(p) {
-    assert(p < 1 && p >= 0);
-  }
-  variable_list forward(variable_list) override;
+  using nn::Module::is_training;
+
+  explicit DropoutBase(double rate);
+
+  void reset() override;
+
+  variable_list forward(variable_list input) override;
+
+  TORCH_ATTR(double, rate) = 0.5;
 
  protected:
-  double p_;
+  virtual Variable noise_mask(Variable input) const = 0;
+};
+} // namespace detail
+
+class Dropout : public detail::DropoutBase<Dropout> {
+ public:
+  using detail::DropoutBase<Dropout>::DropoutBase;
+
+ private:
+  Variable noise_mask(Variable input) const override;
 };
 
-class Dropout2d : public torch::nn::CloneableModule<Dropout2d> {
+class Dropout2d : public detail::DropoutBase<Dropout2d> {
  public:
-  Dropout2d(double p = 0.5) : p_(p) {
-    assert(p < 1 && p >= 0);
-  }
-  variable_list forward(variable_list) override;
+  using detail::DropoutBase<Dropout2d>::DropoutBase;
 
- protected:
-  double p_;
+ private:
+  Variable noise_mask(Variable input) const override;
 };
 
 }} // namespace torch::nn

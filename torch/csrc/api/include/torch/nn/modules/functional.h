@@ -6,21 +6,20 @@
 
 namespace torch { namespace nn {
 
+// Lets you create a container from a function, designed for use in
+// Sequential.
 class Functional : public torch::nn::CloneableModule<Functional> {
-  // Lets you create a container from a function, designed for use in
-  // Sequential.
  public:
-  Functional(std::function<variable_list(variable_list)> fun) : fun_(fun){};
-  Functional(std::function<Variable(Variable)> fun)
-      : fun_([fun](variable_list input) {
-          return variable_list({fun(input[0])});
-        }){};
+  using Function = std::function<variable_list(variable_list)>;
 
-  variable_list forward(variable_list input) override {
-    return fun_(input);
-  };
+  explicit Functional(Function function);
+  explicit Functional(std::function<Variable(Variable)> function);
 
-  std::function<variable_list(variable_list)> fun_;
+  void reset() override;
+
+  variable_list forward(variable_list input) override;
+
+  TORCH_ATTR(Function, function);
 };
 
 }} // namespace torch::nn

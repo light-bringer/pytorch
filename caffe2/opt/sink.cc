@@ -1,15 +1,15 @@
 #include "caffe2/core/logging.h"
 #include "caffe2/opt/converter.h"
 #include "caffe2/opt/mobile.h"
+#include "caffe2/opt/passes.h"
 
 namespace caffe2 {
 namespace opt {
 
 using namespace nom;
 
-caffe2::NetDef sinkMaxPool(caffe2::NetDef net) {
-  auto nn = convertToNNModule(net);
-  for (auto node_pair : repr::nn::dataIterator<repr::MaxPool>(nn.dataFlow)) {
+void sinkMaxPool(nom::repr::NNModule* nn) {
+  for (auto node_pair : repr::nn::dataIterator<repr::MaxPool>(nn->dataFlow)) {
     repr::NNGraph::NodeRef max_pool_node;
     repr::MaxPool* max_pool;
     std::tie(max_pool, max_pool_node) = node_pair;
@@ -39,11 +39,12 @@ caffe2::NetDef sinkMaxPool(caffe2::NetDef net) {
     }
 
     // input -> MaxPool -> intermediate -> Relu -> output
-    nn.dataFlow.swapNodes(max_pool_node, relu_node);
+    nn->dataFlow.swapNodes(max_pool_node, relu_node);
     // input -> Relu -> intermediate -> MaxPool -> output
   }
-  return convertToCaffe2Proto(nn, net);
 }
+
+REGISTER_OPT_PASS_FROM_FUNC(SinkMaxPool, sinkMaxPool);
 
 } // namespace opt
 } // namespace caffe2

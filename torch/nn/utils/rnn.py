@@ -143,9 +143,7 @@ def pack_padded_sequence(input, lengths, batch_first=False):
     return PackedSequence(data, batch_sizes)
 
 
-def _symbolic_pack_padded_sequence(g, input, lengths, batch_first=False, padding_value=0.0, total_length=None):
-    if total_length is not None:
-        raise ValueError("_symbolic_pad_packed_sequence only supports total_length=None")
+def _symbolic_pack_padded_sequence(g, input, lengths, batch_first=False, padding_value=0.0):
     # There currently is no PackPadded operator in ONNX. We rely on an
     # optimization pass to remove this later. It is an error if all
     # PackPadded operators cannot be optimized out.
@@ -240,7 +238,10 @@ def pad_packed_sequence(sequence, batch_first=False, padding_value=0.0, total_le
     return output, torch.LongTensor(lengths)
 
 
-def _symbolic_pad_packed_sequence(g, input, batch_first=False, padding_value=0.0):
+def _symbolic_pad_packed_sequence(g, input, batch_first=False, padding_value=0.0, total_length=None):
+    # Ignore total_length as it is not supported in _symbolic_pad_packed_sequence
+    # It is only useful/used when training using data_parallel model, so
+    # It shouldn't be relevant for ONNX anyway
     def _onnx_symbolic_pad_packed_sequence(g, data, batch_sizes):
         data, lengths = g.op("prim::PadPacked", data, batch_sizes, outputs=2)
         if batch_first:
@@ -339,7 +340,7 @@ def pack_sequence(sequences):
         >>> a = torch.tensor([1,2,3])
         >>> b = torch.tensor([4,5])
         >>> c = torch.tensor([6])
-        >>> pack_sequence([a, b, c]])
+        >>> pack_sequence([a, b, c])
         PackedSequence(data=tensor([ 1,  4,  6,  2,  5,  3]), batch_sizes=tensor([ 3,  2,  1]))
 
 
